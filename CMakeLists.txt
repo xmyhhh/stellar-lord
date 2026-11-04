@@ -33,6 +33,27 @@ configure_file(
     @ONLY
 )
 
+# 内存房间服务器核心：独立服务器和桌面客户端的主机模式共用。
+add_library(rift_server_core STATIC
+    server/server_core.cpp
+)
+target_include_directories(rift_server_core PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/server"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+target_compile_features(rift_server_core PUBLIC cxx_std_20)
+target_compile_definitions(rift_server_core PUBLIC
+    UNICODE
+    _UNICODE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+    WINVER=0x0A00
+    _WIN32_WINNT=0x0A00
+    NTDDI_VERSION=0x0A000000
+    _CRT_SECURE_NO_WARNINGS
+)
+target_link_libraries(rift_server_core PUBLIC ws2_32)
+
 add_executable(stellar_lord_taskbar WIN32
     "${CMAKE_CURRENT_BINARY_DIR}/app_generated.rc"
     src/app_config.cpp
@@ -44,6 +65,7 @@ add_executable(stellar_lord_taskbar WIN32
     src/taskbar_embedder.cpp
 )
 
+target_link_libraries(stellar_lord_taskbar PRIVATE rift_server_core)
 add_dependencies(stellar_lord_taskbar generate_app_icon)
 
 target_compile_features(stellar_lord_taskbar PRIVATE cxx_std_20)
@@ -95,6 +117,7 @@ target_compile_definitions(stellar_lord_server PRIVATE
     _CRT_SECURE_NO_WARNINGS
 )
 target_link_libraries(stellar_lord_server PRIVATE
+    rift_server_core
     ws2_32
 )
 if(MSVC)
@@ -117,4 +140,8 @@ if(BUILD_TESTING)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests"
     )
     add_test(NAME game_model COMMAND game_model_tests)
+    add_test(NAME online_selftest COMMAND stellar_lord_taskbar --self-test)
+    set_tests_properties(online_selftest PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
 endif()

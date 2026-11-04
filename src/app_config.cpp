@@ -302,6 +302,10 @@ AppConfig LoadAppConfig() {
     if (!IsValidPlayerId(config.player_id)) {
         config.player_id = GeneratePlayerId();
     }
+    config.nickname = ReadStringValue(content, "nickname", config.nickname);
+    if (config.nickname.size() > 48) {
+        config.nickname.resize(48);
+    }
     return config;
 }
 bool SaveAppConfig(const AppConfig& config) {
@@ -341,7 +345,8 @@ bool SaveAppConfig(const AppConfig& config) {
                                config.server_host.empty() ? "127.0.0.1" : config.server_host) + ",\n";
     content += SerializeUnsignedInt("server_port",
                                     NormalizeServerPort(config.server_port)) + ",\n";
-    content += SerializeString("player_id", config.player_id) + "\n";
+    content += SerializeString("player_id", config.player_id) + ",\n";
+    content += SerializeString("nickname", config.nickname) + "\n";
     content += "}\n";
 
     HANDLE file_handle = CreateFileW(config_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,

@@ -47,6 +47,8 @@ struct AppConfig {
     std::string server_host{"127.0.0.1"};
     unsigned int server_port{8787};
     std::string player_id{};
+    std::string nickname{};
+
 };
 
 AppConfig LoadAppConfig();
