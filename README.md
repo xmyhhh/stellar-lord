@@ -1,15 +1,15 @@
-# 深空货运（Deep Space Freight）
+# 星际领主（Stellar Lord）
 
 > **新版设计文档**
 >
-> 本仓库正在从「深空货运」迁移到「星际领主 / 加入时空」。
+> 本仓库已更名为「星际领主 / Stellar Lord」，联机入口为「加入时空」。
 > 新的世界观、剧本、玩法与联机设计见 [`docs/README.md`](docs/README.md)。
-> 本 README 其余内容描述旧版货运原型，代码迁移完成后再更新。
+> 本 README 其余内容描述当前原型，代码迁移完成后再更新。
 
 一个常驻 Windows 任务栏的挂机放置游戏，**外观是系统性能监视器**。
 
 任务栏控件默认显示真实的 CPU / 内存 / 显卡 / 网络 / 磁盘数据，点开也只是进程列表；
-按 `Alt+Q` 才会切成「货运面板」——采矿、熔炼、派船、跑星际航线、处理待办。
+按 `Alt+Q` 才会切成「领主面板」——采矿、熔炼、派船、跑星际航线、处理待办。
 
 设计目标：上班可玩、随时中断、单次操作 30 秒内、无音效无弹窗无红点。
 
@@ -29,7 +29,7 @@ cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 ```
 
-产物：`build/Release/orbital_freight_taskbar.exe`
+产物：`build/Release/stellar_lord_taskbar.exe`
 
 跑测试（纯逻辑层，不依赖 Win32）：
 
@@ -41,9 +41,9 @@ ctest --test-dir build -C Release --output-on-failure
 
 ## 运行
 
-直接双击 `orbital_freight_taskbar.exe`。程序没有主窗口，只会嵌入任务栏并驻留托盘。
+直接双击 `stellar_lord_taskbar.exe`。程序没有主窗口，只会嵌入任务栏并驻留托盘。
 
-> 首次运行会在 exe 同目录生成 `config.json` 和 `freight_save.txt`。
+> 首次运行会在 exe 同目录生成 `config.json` 和 `stellar_lord_save.txt`。
 > 因此不要放在 `C:\Program Files` 之类无写权限的目录，建议单独放一个文件夹。
 
 ---
@@ -52,7 +52,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 | 操作 | 效果 |
 | --- | --- |
-| `Alt+Q`（可改） | 在「性能监视」和「深空货运」之间切换 |
+| `Alt+Q`（可改） | 在「性能监视」和「星际领主」之间切换 |
 | 悬停 / 左键点击任务栏控件 | 打开弹窗（方式可在菜单里改） |
 | 右键任务栏控件或托盘图标 | 菜单：模式、弹窗方式、刷新间隔、快捷键、语言、开机启动、清空存档、退出 |
 | 左键单击托盘图标 | 快速切换模式 |
@@ -128,7 +128,7 @@ ctest --test-dir build -C Release --output-on-failure
   "show_disk_write": true,
   "network_unit": "bits",
   "monitor_popup_mode": "hover",
-  "freight_popup_mode": "click",
+  "lord_popup_mode": "click",
   "toggle_hotkey": "alt_q",
   "language": "zh_cn",
   "sample_interval_seconds": 1,
@@ -142,14 +142,14 @@ ctest --test-dir build -C Release --output-on-failure
 | `show_*` | 监视器模式下任务栏显示哪些指标 |
 | `network_unit` | `bits` / `bytes` |
 | `monitor_popup_mode` | 监视器模式弹窗方式：`hover` / `click` |
-| `freight_popup_mode` | 货运模式弹窗方式：`hover` / `click` |
+| `lord_popup_mode` | 领主模式弹窗方式：`hover` / `click` |
 | `toggle_hotkey` | `alt_q` / `alt_s` / `alt_m` / `ctrl_alt_q` |
 | `language` | `zh_cn` / `en` |
 | `sample_interval_seconds` | `1` / `2` / `5` / `10` |
 | `taskbar_monitor_index` | 多显示器时目标任务栏序号（0 = 主屏） |
 | `auto_start` | 开机启动（写入 `HKCU\...\Run`） |
 
-`freight_save.txt` 是纯文本存档，一行一个字段，可以直接手改（改之前先退出程序）。
+`stellar_lord_save.txt` 是纯文本存档，一行一个字段，可以直接手改（改之前先退出程序）。
 
 ---
 

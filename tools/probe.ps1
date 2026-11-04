@@ -37,7 +37,7 @@ public class Probe {
 }
 "@
 
-$proc = Get-Process orbital_freight_taskbar -ErrorAction SilentlyContinue
+$proc = Get-Process stellar_lord_taskbar -ErrorAction SilentlyContinue
 if (-not $proc) { Write-Output "app not running"; exit 1 }
 
 # 让探测进程本身 DPI 感知，否则 Windows 会把窗口尺寸/坐标虚拟化（150% 缩放下相差 1.5 倍）。
@@ -45,13 +45,13 @@ if (-not $proc) { Write-Output "app not running"; exit 1 }
 
 $has_popup = $false
 
-$widget = [Probe]::FindChild("OrbitalFreightWidgetWindow")
-$popup = [Probe]::FindTop([uint32]$proc.Id, "OrbitalFreightPopupWindow")
+$widget = [Probe]::FindChild("StellarLordWidgetWindow")
+$popup = [Probe]::FindTop([uint32]$proc.Id, "StellarLordPopupWindow")
 $has_popup = $popup -ne [IntPtr]::Zero
 
 switch ($Action) {
     "toggle" {
-        $ctrl = [Probe]::FindTop([uint32]$proc.Id, "OrbitalFreightControllerWindow")
+        $ctrl = [Probe]::FindTop([uint32]$proc.Id, "StellarLordControllerWindow")
         [Probe]::PostMessage($ctrl, 0x0312, [IntPtr]1, [IntPtr]0) | Out-Null
         Start-Sleep -Milliseconds 800
         Write-Output "toggled"
@@ -67,10 +67,10 @@ switch ($Action) {
         Write-Output "closed"
     }
     "restart" {
-        $ctrl = [Probe]::FindTop([uint32]$proc.Id, "OrbitalFreightControllerWindow")
+        $ctrl = [Probe]::FindTop([uint32]$proc.Id, "StellarLordControllerWindow")
         [Probe]::PostMessage($ctrl, 0x0010, [IntPtr]0, [IntPtr]0) | Out-Null
         Start-Sleep -Seconds 2
-        $exe = Join-Path $PSScriptRoot "..\build\Release\orbital_freight_taskbar.exe"
+        $exe = Join-Path $PSScriptRoot "..\build\Release\stellar_lord_taskbar.exe"
         Start-Process -FilePath $exe
         Start-Sleep -Seconds 3
         Write-Output "restarted"

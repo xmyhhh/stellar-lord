@@ -27,17 +27,17 @@ enum class UiLanguage {
 // 否则用户会以为任务栏上只有个性能监视器。
 enum class AppMode {
     kMonitor,
-    kFreight,
+    kLord,
 };
 
 struct AppConfig {
     MetricVisibility visible_metrics{};
     NetworkDisplayUnit network_display_unit{NetworkDisplayUnit::kBitsPerSecond};
     PopupActivationMode monitor_popup_mode{PopupActivationMode::kHover};
-    PopupActivationMode freight_popup_mode{PopupActivationMode::kClick};
+    PopupActivationMode lord_popup_mode{PopupActivationMode::kClick};
     ToggleHotkey toggle_hotkey{ToggleHotkey::kAltQ};
     UiLanguage language{UiLanguage::kChinese};
-    AppMode mode{AppMode::kFreight};
+    AppMode mode{AppMode::kLord};
     unsigned int sample_interval_seconds{1};
     unsigned int taskbar_monitor_index{0};
     bool auto_start{false};

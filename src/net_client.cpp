@@ -151,7 +151,7 @@ NetResponse PerformRequest(const std::string& host, unsigned short port, bool po
     request += path;
     request += " HTTP/1.1\r\nHost: ";
     request += host + ":" + port_text;
-    request += "\r\nUser-Agent: DeepSpaceFreight/1.0\r\nAccept: */*\r\n";
+    request += "\r\nUser-Agent: StellarLord/1.0\r\nAccept: */*\r\n";
     if (post) {
         request += "Content-Type: application/x-www-form-urlencoded\r\n";
         request += "Content-Length: " + std::to_string(body.size()) + "\r\n";

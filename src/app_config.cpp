@@ -12,7 +12,7 @@ namespace minimal_taskbar_monitor {
 namespace {
 
 constexpr wchar_t kConfigFileName[] = L"config.json";
-constexpr wchar_t kSaveFileName[] = L"freight_save.txt";
+constexpr wchar_t kSaveFileName[] = L"stellar_lord_save.txt";
 
 bool ReadBoolValue(const std::string& content, std::string_view key, bool default_value) {
     const std::string quoted_key = "\"" + std::string(key) + "\"";
@@ -201,11 +201,11 @@ std::string_view SerializeUiLanguage(UiLanguage value) {
 }
 
 AppMode ParseAppMode(std::string_view value) {
-    return value == "monitor" ? AppMode::kMonitor : AppMode::kFreight;
+    return value == "monitor" ? AppMode::kMonitor : AppMode::kLord;
 }
 
 std::string_view SerializeAppMode(AppMode value) {
-    return value == AppMode::kMonitor ? "monitor" : "freight";
+    return value == AppMode::kMonitor ? "monitor" : "lord";
 }
 
 std::filesystem::path ExecutableDirectory() {
@@ -282,11 +282,11 @@ AppConfig LoadAppConfig() {
         ParseNetworkDisplayUnit(ReadStringValue(content, "network_unit", "bits"));
     config.monitor_popup_mode =
         ParsePopupActivationMode(ReadStringValue(content, "monitor_popup_mode", "hover"));
-    config.freight_popup_mode =
-        ParsePopupActivationMode(ReadStringValue(content, "freight_popup_mode", "click"));
+    config.lord_popup_mode =
+        ParsePopupActivationMode(ReadStringValue(content, "lord_popup_mode", "click"));
     config.toggle_hotkey = ParseToggleHotkey(ReadStringValue(content, "toggle_hotkey", "alt_q"));
     config.language = ParseUiLanguage(ReadStringValue(content, "language", "zh_cn"));
-    config.mode = ParseAppMode(ReadStringValue(content, "mode", "freight"));
+    config.mode = ParseAppMode(ReadStringValue(content, "mode", "lord"));
     config.sample_interval_seconds = NormalizeSampleIntervalSeconds(
         ReadUnsignedIntValue(content, "sample_interval_seconds", config.sample_interval_seconds));
     config.taskbar_monitor_index =
@@ -327,8 +327,8 @@ bool SaveAppConfig(const AppConfig& config) {
                                SerializeNetworkDisplayUnit(config.network_display_unit)) + ",\n";
     content += SerializeString("monitor_popup_mode",
                                SerializePopupActivationMode(config.monitor_popup_mode)) + ",\n";
-    content += SerializeString("freight_popup_mode",
-                               SerializePopupActivationMode(config.freight_popup_mode)) + ",\n";
+    content += SerializeString("lord_popup_mode",
+                               SerializePopupActivationMode(config.lord_popup_mode)) + ",\n";
     content += SerializeString("toggle_hotkey", SerializeToggleHotkey(config.toggle_hotkey)) + ",\n";
     content += SerializeString("language", SerializeUiLanguage(config.language)) + ",\n";
     content += SerializeString("mode", SerializeAppMode(config.mode)) + ",\n";

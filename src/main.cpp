@@ -33,11 +33,11 @@ namespace {
 // 常量
 // ---------------------------------------------------------------------------
 
-constexpr wchar_t kControllerClassName[] = L"OrbitalFreightControllerWindow";
-constexpr wchar_t kWidgetClassName[] = L"OrbitalFreightWidgetWindow";
-constexpr wchar_t kPopupClassName[] = L"OrbitalFreightPopupWindow";
-constexpr wchar_t kServerClassName[] = L"OrbitalFreightServerWindow";
-constexpr wchar_t kRoomClassName[] = L"OrbitalFreightRoomWindow";
+constexpr wchar_t kControllerClassName[] = L"StellarLordControllerWindow";
+constexpr wchar_t kWidgetClassName[] = L"StellarLordWidgetWindow";
+constexpr wchar_t kPopupClassName[] = L"StellarLordPopupWindow";
+constexpr wchar_t kServerClassName[] = L"StellarLordServerWindow";
+constexpr wchar_t kRoomClassName[] = L"StellarLordRoomWindow";
 
 constexpr UINT_PTR kSampleTimerId = 1;
 constexpr UINT_PTR kLayoutTimerId = 2;
@@ -62,7 +62,7 @@ constexpr UINT kTrayIconId = 1;
 constexpr UINT kExitCommandId = 1001;
 constexpr UINT kAutoStartCommandId = 1002;
 constexpr UINT kModeMonitorCommandId = 1003;
-constexpr UINT kModeFreightCommandId = 1004;
+constexpr UINT kModeLordCommandId = 1004;
 constexpr UINT kPopupHoverCommandId = 1005;
 constexpr UINT kPopupClickCommandId = 1006;
 constexpr UINT kInterval1sCommandId = 1007;
@@ -91,7 +91,7 @@ constexpr int kRoomWindowWidth = 420;
 constexpr int kRoomWindowHeight = 235;
 
 constexpr wchar_t kRunRegistryPath[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-constexpr wchar_t kRunValueName[] = L"OrbitalFreightTaskbar";
+constexpr wchar_t kRunValueName[] = L"StellarLordTaskbar";
 
 // ---------------------------------------------------------------------------
 // 语言
@@ -594,7 +594,7 @@ private:
     bool Initialize() {
         LoadGame();
         StartSamplers();
-        freight_mode_ = app_config_.mode == AppMode::kFreight;
+        freight_mode_ = app_config_.mode == AppMode::kLord;
         UpdateMonitorDisplayLines(last_snapshot_);
         UpdateFreightDisplayLines();
         if (!EnsureWidgetWindow()) {
@@ -1018,7 +1018,7 @@ private:
 
     void ToggleMode() {
         freight_mode_ = !freight_mode_;
-        app_config_.mode = freight_mode_ ? AppMode::kFreight : AppMode::kMonitor;
+        app_config_.mode = freight_mode_ ? AppMode::kLord : AppMode::kMonitor;
         SaveAppConfig(app_config_);
         HidePopup();
         ApplyWidgetLines();
@@ -2142,7 +2142,7 @@ private:
     }
 
     PopupActivationMode CurrentPopupMode() const {
-        return freight_mode_ ? app_config_.freight_popup_mode : app_config_.monitor_popup_mode;
+        return freight_mode_ ? app_config_.lord_popup_mode : app_config_.monitor_popup_mode;
     }
 
     // 弹窗内的命中测试：-2 = 标签页，>=0 = 可点击的行，-1 = 空白或不可点。
@@ -2603,8 +2603,8 @@ private:
         y += row_height + gap;
         const int button_y = (client.bottom - client.top) - pad - button_height;
         server_status_text_ = make_label(
-            T(L"Point the client at the freight_server address.",
-              L"填写 freight_server 所在机器地址，本机可留 127.0.0.1。"),
+            T(L"Point the client at the stellar_lord_server address.",
+              L"填写 stellar_lord_server 所在机器地址，本机可留 127.0.0.1。"),
             pad, y, inner_width, std::max(row_height, button_y - y - gap));
 
         CreateWindowExW(0, L"BUTTON", T(L"Save", L"保存"),
@@ -3230,7 +3230,7 @@ private:
         const PopupActivationMode mode = CurrentPopupMode();
         AppendMenuW(mode_menu, MF_STRING | (freight_mode_ ? 0 : MF_CHECKED), kModeMonitorCommandId,
                     T(L"System monitor", L"系统监视"));
-        AppendMenuW(mode_menu, MF_STRING | (freight_mode_ ? MF_CHECKED : 0), kModeFreightCommandId,
+        AppendMenuW(mode_menu, MF_STRING | (freight_mode_ ? MF_CHECKED : 0), kModeLordCommandId,
                     T(L"Stellar Lord", L"星际领主"));
         AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(mode_menu),
                     T(L"Mode", L"模式"));
@@ -3339,7 +3339,7 @@ private:
 
     bool SetPopupMode(PopupActivationMode mode) {
         if (freight_mode_) {
-            app_config_.freight_popup_mode = mode;
+            app_config_.lord_popup_mode = mode;
         } else {
             app_config_.monitor_popup_mode = mode;
         }
@@ -3387,7 +3387,7 @@ private:
         case kModeMonitorCommandId:
             if (freight_mode_) ToggleMode();
             break;
-        case kModeFreightCommandId:
+        case kModeLordCommandId:
             if (!freight_mode_) ToggleMode();
             break;
         case kPopupHoverCommandId:

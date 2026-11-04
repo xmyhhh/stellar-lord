@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(orbital_freight_taskbar VERSION 0.1.0 LANGUAGES CXX)
+project(stellar_lord_taskbar VERSION 0.1.0 LANGUAGES CXX)
 
 find_program(POWERSHELL_EXECUTABLE NAMES powershell pwsh REQUIRED)
 
@@ -33,7 +33,7 @@ configure_file(
     @ONLY
 )
 
-add_executable(orbital_freight_taskbar WIN32
+add_executable(stellar_lord_taskbar WIN32
     "${CMAKE_CURRENT_BINARY_DIR}/app_generated.rc"
     src/app_config.cpp
     src/game_model.cpp
@@ -44,11 +44,11 @@ add_executable(orbital_freight_taskbar WIN32
     src/taskbar_embedder.cpp
 )
 
-add_dependencies(orbital_freight_taskbar generate_app_icon)
+add_dependencies(stellar_lord_taskbar generate_app_icon)
 
-target_compile_features(orbital_freight_taskbar PRIVATE cxx_std_20)
+target_compile_features(stellar_lord_taskbar PRIVATE cxx_std_20)
 
-target_compile_definitions(orbital_freight_taskbar PRIVATE
+target_compile_definitions(stellar_lord_taskbar PRIVATE
     UNICODE
     _UNICODE
     NOMINMAX
@@ -58,7 +58,7 @@ target_compile_definitions(orbital_freight_taskbar PRIVATE
     NTDDI_VERSION=0x0A000000
 )
 
-target_link_libraries(orbital_freight_taskbar PRIVATE
+target_link_libraries(stellar_lord_taskbar PRIVATE
     pdh
     iphlpapi
     psapi
@@ -69,22 +69,22 @@ target_link_libraries(orbital_freight_taskbar PRIVATE
 )
 
 if(MSVC)
-    target_compile_options(orbital_freight_taskbar PRIVATE
+    target_compile_options(stellar_lord_taskbar PRIVATE
         $<$<CONFIG:Release>:/O2 /Oi /Ot /GF /Gy /Gw>
     )
-    target_link_options(orbital_freight_taskbar PRIVATE
+    target_link_options(stellar_lord_taskbar PRIVATE
         $<$<CONFIG:Release>:/OPT:REF /OPT:ICF /INCREMENTAL:NO>
     )
 endif()
 
 # 联机服务端：零外部依赖的单 exe HTTP 服务，房间全部驻留内存。
-add_executable(freight_server
+add_executable(stellar_lord_server
     server/main.cpp
     src/game_model.cpp
 )
-target_include_directories(freight_server PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_compile_features(freight_server PRIVATE cxx_std_20)
-target_compile_definitions(freight_server PRIVATE
+target_include_directories(stellar_lord_server PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_compile_features(stellar_lord_server PRIVATE cxx_std_20)
+target_compile_definitions(stellar_lord_server PRIVATE
     UNICODE
     _UNICODE
     NOMINMAX
@@ -94,11 +94,11 @@ target_compile_definitions(freight_server PRIVATE
     NTDDI_VERSION=0x0A000000
     _CRT_SECURE_NO_WARNINGS
 )
-target_link_libraries(freight_server PRIVATE
+target_link_libraries(stellar_lord_server PRIVATE
     ws2_32
 )
 if(MSVC)
-    target_compile_options(freight_server PRIVATE
+    target_compile_options(stellar_lord_server PRIVATE
         $<$<CONFIG:Release>:/O2 /Oi /Ot /GF /Gy /Gw>
     )
 endif()
