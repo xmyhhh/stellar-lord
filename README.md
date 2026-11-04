@@ -29,13 +29,51 @@ cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 ```
 
-产物：`build/Release/stellar_lord_taskbar.exe`
+产物：`build/Release/stellar_lord_taskbar.exe`、`build/Release/stellar_lord_server.exe`
 
 跑测试（纯逻辑层，不依赖 Win32）：
 
 ```powershell
 ctest --test-dir build -C Release --output-on-failure
 ```
+
+---
+
+## 发版（Windows CI）
+
+仓库自带一条 **仅 Windows** 的构建 / 发版流水线：
+[`.github/workflows/windows-release.yml`](.github/workflows/windows-release.yml)。
+它固定在 `windows-2022` + Visual Studio 2022 x64 上运行，不生成 Linux 或 macOS 包。
+
+触发方式：
+
+| 触发 | 行为 |
+| --- | --- |
+| 推送 `v*` 标签 | 构建 → `ctest` → 无窗口 `--self-test` → 打包 → 创建 GitHub Release |
+| 手动 `workflow_dispatch` | 同样构建、测试、打包，只上传 Actions artifact，不发 Release |
+
+发版前先把 `CMakeLists.txt` 里的 `project(... VERSION x.y.z)` 改成目标版本，标签必须严格等于 `vx.y.z`，否则流水线会拒绝发布。
+
+```powershell
+# 发布 v0.1.0
+git tag -a v0.1.0 -m "Stellar Lord v0.1.0"
+git push origin main
+git push origin v0.1.0
+```
+
+Release 附件为 `StellarLord-<版本>-windows-x64.zip` 和同名 `.sha256`，zip 内包含：
+
+- `stellar_lord_taskbar.exe`（客户端 / 内嵌主机）
+- `stellar_lord_server.exe`（独立服务端）
+- `README.md`、`docs/`、`VERSION.txt`
+
+本地也可以手动打包：
+
+```powershell
+./tools/package_release.ps1 -Version 0.1.0
+```
+
+> 发布检查：协议版本、存档版本、文档里的 `vN`、`CMakeLists.txt` 版本必须同步修改；`VERSION.txt` 会记录本次构建的协议 / 存档版本。
 
 ---
 
@@ -272,6 +310,8 @@ stellar_lord_taskbar.exe --self-test
 ## 目录结构
 
 ```
+.github/
+  workflows/windows-release.yml  Windows CI / 发版流水线
 src/
   main.cpp             Win32 UI、启动角色选择、主机/加入窗口、任务栏控件与弹窗
   game_model.h/.cpp    纯逻辑层：资源、设施、科技、舰队、路线、事件、奇观、战斗、序列化
@@ -289,6 +329,7 @@ tests/
 tools/
   probe.ps1            调试助手：抓取任务栏控件/弹窗截图、发按键、切换模式
   generate_app_icon.ps1
+  package_release.ps1  收集 Release 产物、生成 VERSION.txt / zip / SHA-256
 ```
 
 ### 调试
@@ -296,7 +337,7 @@ tools/
 ```powershell
 # 无窗口联机自检：建房、加入、开局、操作、退出回档、迟到追赶、版本拒绝
 build/Release/stellar_lord_taskbar.exe --self-test
-Get-Content build/Release/selftest_report.txt
+Get-Content selftest_report.txt
 
 # 纯逻辑层测试
 ctest --test-dir build -C Release --output-on-failure

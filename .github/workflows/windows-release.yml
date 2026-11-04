@@ -1,0 +1,142 @@
+name: Windows CI / Release
+
+# Windows-only pipeline. Tags create a GitHub Release; manual runs only
+# produce a downloadable workflow artifact.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $cmake = Get-Content -LiteralPath CMakeLists.txt -Raw
+          if ($cmake -notmatch 'project\s*\(\s*stellar_lord_taskbar\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)') {
+              throw 'Cannot read project version from CMakeLists.txt.'
+          }
+          $projectVersion = $Matches[1]
+
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+              if ($env:GITHUB_REF_NAME -ne "v$projectVersion") {
+                  throw "Tag '$env:GITHUB_REF_NAME' must be 'v$projectVersion' to match CMakeLists.txt. Bump project(VERSION ...) before tagging."
+              }
+              $version = $projectVersion
+              $publish = 'true'
+          } else {
+              $version = "$projectVersion-dev.$env:GITHUB_RUN_NUMBER"
+              $publish = 'false'
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "publish=$publish" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version (release: $publish)"
+
+      - name: Configure CMake
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+
+      - name: Build Release
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Run tests
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Headless online self-test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $header = Get-Content -LiteralPath 'server/server_core.h' -Raw
+          if ($header -notmatch 'kProtocolVersion\s*=\s*(\d+)') {
+              throw 'Cannot read kProtocolVersion from server/server_core.h.'
+          }
+          $expectedProtocol = $Matches[1]
+
+          $exe = (Resolve-Path 'build/Release/stellar_lord_taskbar.exe').Path
+          # The client is a WIN32 GUI subsystem executable; PowerShell does not
+          # wait for it with the call operator, so use Start-Process -Wait.
+          $process = Start-Process -FilePath $exe -ArgumentList '--self-test' `
+              -WorkingDirectory (Resolve-Path 'build').Path -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+              throw "Self-test failed with exit code $($process.ExitCode)."
+          }
+
+          $report = (Get-Content -LiteralPath 'build/selftest_report.txt' -Raw) `
+              -replace "`r`n", "`n"
+          if ($report -notmatch '(?m)^RESULT: PASS$') {
+              throw "Self-test did not report PASS.`n$report"
+          }
+          if ($report -notmatch "(?m)^protocol_version=$expectedProtocol$") {
+              throw "Self-test protocol version does not match server_core.h (expected $expectedProtocol)."
+          }
+          Write-Host "Self-test passed with protocol v$expectedProtocol."
+
+      - name: Package Windows release
+        shell: pwsh
+        run: ./tools/package_release.ps1 -Version '${{ steps.version.outputs.version }}'
+
+      - name: Upload workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: stellar-lord-${{ steps.version.outputs.version || github.run_number }}-windows-x64
+          path: |
+            dist/StellarLord-*.zip
+            dist/StellarLord-*.zip.sha256
+            build/selftest_report.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $zip = Get-ChildItem -LiteralPath dist -Filter 'StellarLord-*.zip' |
+              Select-Object -First 1
+          if (-not $zip) {
+              throw 'Release zip was not produced.'
+          }
+          $checksum = Get-Item -LiteralPath "$($zip.FullName).sha256"
+
+          gh release view $env:TAG --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+              gh release upload $env:TAG $zip.FullName $checksum.FullName --clobber
+              if ($LASTEXITCODE -ne 0) {
+                  throw 'gh release upload failed.'
+              }
+          } else {
+              gh release create $env:TAG $zip.FullName $checksum.FullName `
+                  --title "星际领主 $env:TAG" --generate-notes
+              if ($LASTEXITCODE -ne 0) {
+                  throw 'gh release create failed.'
+              }
+          }
+          Write-Host "Published $env:TAG with $($zip.Name)."
