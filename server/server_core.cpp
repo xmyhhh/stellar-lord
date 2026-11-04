@@ -832,6 +832,21 @@ HttpResponse HandleRoomAction(const HttpRequest& request) {
     } else if (action == "colony") {
         accepted = stellar::UpgradeColony(member->state,
                                           static_cast<std::size_t>(std::max(0, index)));
+    } else if (action == "colony_spec") {
+        const size_t colon = arg.find(':');
+        const int colony_index = std::max(0, std::atoi(arg.substr(0, colon).c_str()));
+        if (colon == std::string::npos) {
+            accepted = stellar::CycleColonySpecialization(
+                member->state, static_cast<std::size_t>(colony_index));
+        } else {
+            const int spec = std::atoi(arg.substr(colon + 1).c_str());
+            if (spec >= 0 &&
+                spec < static_cast<int>(stellar::ColonySpecialization::kCount)) {
+                accepted = stellar::SetColonySpecialization(
+                    member->state, static_cast<std::size_t>(colony_index),
+                    static_cast<stellar::ColonySpecialization>(spec));
+            }
+        }
     } else if (action == "faction") {
         accepted = stellar::ChooseFaction(member->state, index);
     } else if (action == "sell") {

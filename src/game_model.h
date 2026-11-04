@@ -234,6 +234,7 @@ struct Rates {
     double food{0.0};
     double alloy{0.0};
     double research{0.0};
+    double influence{0.0};
     double population_capacity{0.0};
     double population_growth{0.0};
     double fleet_growth{0.0};

@@ -774,7 +774,7 @@ enum class RowAction {
     kAttackNeutral,
     kAttackSector,
     kColonize,
-    kColonyUpgrade,
+    kColonySpec,
     kAttackRival,
     kBuildWonder,
     kChooseFaction,
@@ -976,6 +976,52 @@ const wchar_t* FactionDescription(int faction) {
     case stellar::FactionId::kCount:
     default:
         return L"";
+    }
+}
+
+const wchar_t* ColonySpecName(int specialization) {
+    switch (static_cast<stellar::ColonySpecialization>(specialization)) {
+    case stellar::ColonySpecialization::kEnergy:
+        return T(L"Energy world", L"能源世界");
+    case stellar::ColonySpecialization::kMining:
+        return T(L"Mining world", L"矿业世界");
+    case stellar::ColonySpecialization::kAgriculture:
+        return T(L"Agri world", L"农业世界");
+    case stellar::ColonySpecialization::kIndustry:
+        return T(L"Industry world", L"工业世界");
+    case stellar::ColonySpecialization::kResearch:
+        return T(L"Research world", L"科研世界");
+    case stellar::ColonySpecialization::kTrade:
+        return T(L"Trade port", L"贸易港");
+    case stellar::ColonySpecialization::kFortress:
+        return T(L"Fortress world", L"要塞世界");
+    case stellar::ColonySpecialization::kBalanced:
+    case stellar::ColonySpecialization::kCount:
+    default:
+        return T(L"Balanced", L"均衡");
+    }
+}
+
+const wchar_t* ColonySpecDescription(int specialization) {
+    switch (static_cast<stellar::ColonySpecialization>(specialization)) {
+    case stellar::ColonySpecialization::kEnergy:
+        return T(L"power +9%/lv, food -3%/lv", L"能源 +9%/级，食物 -3%/级");
+    case stellar::ColonySpecialization::kMining:
+        return T(L"minerals +9%/lv, power -2%/lv", L"矿物 +9%/级，能源 -2%/级");
+    case stellar::ColonySpecialization::kAgriculture:
+        return T(L"food +9%/lv, alloy -3%/lv", L"食物 +9%/级，合金 -3%/级");
+    case stellar::ColonySpecialization::kIndustry:
+        return T(L"alloy +9%/lv, food -3%/lv", L"合金 +9%/级，食物 -3%/级");
+    case stellar::ColonySpecialization::kResearch:
+        return T(L"science +9%/lv, pop cap -2%/lv", L"科研 +9%/级，人口上限 -2%/级");
+    case stellar::ColonySpecialization::kTrade:
+        return T(L"market +2%/lv, influence +4%/lv", L"市场卖价 +2%/级，影响力 +4%/级");
+    case stellar::ColonySpecialization::kFortress:
+        return T(L"fleet cap +4/lv", L"舰队上限 +4/级");
+    case stellar::ColonySpecialization::kBalanced:
+    case stellar::ColonySpecialization::kCount:
+    default:
+        return T(L"no bonus", L"无加成");
     }
 }
 
@@ -2357,20 +2403,37 @@ private:
             const std::size_t colony_limit = std::min<std::size_t>(state.colonies.size(), 6);
             for (std::size_t i = 0; i < colony_limit; ++i) {
                 FreightRow row;
+                const int specialization = state.colonies[i].specialization;
+                const int next_specialization =
+                    (specialization + 1) %
+                    static_cast<int>(stellar::ColonySpecialization::kCount);
+                const bool first_doctrine =
+                    specialization ==
+                    static_cast<int>(stellar::ColonySpecialization::kBalanced);
                 row.left = T(L"Colony #", L"殖民地 #") + std::to_wstring(i + 1);
                 row.mid = L"Lv." + std::to_wstring(state.colonies[i].level) + L"/" +
                           std::to_wstring(stellar::kMaxColonyLevel) + L"   " +
-                          T(L"pop cap +", L"人口上限 +") +
-                          std::to_wstring(10 * state.colonies[i].level);
+                          ColonySpecName(specialization) + L"   " +
+                          ColonySpecDescription(specialization) +
+                          (first_doctrine ? std::wstring(T(L"   first free", L"   首次免费"))
+                                          : std::wstring(T(L"   respec 10 INF", L"   改位 10 INF")));
                 const stellar::Cost cost = stellar::ColonyUpgradeCost(state, i);
+                row.has_choice = true;
                 if (state.colonies[i].level >= stellar::kMaxColonyLevel) {
-                    row.right = T(L"MAX", L"已满");
-                    row.enabled = false;
+                    row.choice_a = T(L"Upgrade MAX", L"升级 已满");
+                    row.choice_a_enabled = false;
                 } else {
-                    row.right = cost_text(cost);
-                    row.enabled = can_pay(state, cost);
+                    row.choice_a = std::wstring(T(L"Upgrade ", L"升级 ")) +
+                                   FormatCompact(cost.minerals) + L"M " +
+                                   FormatCompact(cost.alloy) + L"A";
+                    row.choice_a_enabled = can_pay(state, cost);
                 }
-                row.action = RowAction::kColonyUpgrade;
+                row.choice_b = std::wstring(T(L"Next: ", L"下一：")) +
+                               ColonySpecName(next_specialization);
+                row.choice_b_enabled =
+                    stellar::CanChangeColonySpecialization(state, i);
+                row.enabled = row.choice_a_enabled || row.choice_b_enabled;
+                row.action = RowAction::kColonySpec;
                 row.index = static_cast<int>(i);
                 add_row(row);
             }
@@ -3859,8 +3922,9 @@ private:
             case RowAction::kColonize:
                 PostRoomAction("colonize", {});
                 return;
-            case RowAction::kColonyUpgrade:
-                PostRoomAction("colony", std::to_string(row.index));
+            case RowAction::kColonySpec:
+                PostRoomAction(primary ? "colony" : "colony_spec",
+                               std::to_string(row.index));
                 return;
             case RowAction::kBuildWonder:
                 PostRoomAction("wonder", std::to_string(row.index));
@@ -3957,11 +4021,21 @@ private:
                             L"需要 8 人口和足够的补给。");
             }
             break;
-        case RowAction::kColonyUpgrade:
-            if (stellar::UpgradeColony(game_, static_cast<std::size_t>(row.index))) {
-                message = T(L"Colony upgraded.", L"殖民地已升级。");
+        case RowAction::kColonySpec:
+            if (primary) {
+                if (stellar::UpgradeColony(game_, static_cast<std::size_t>(row.index))) {
+                    message = T(L"Colony upgraded.", L"殖民地已升级。");
+                } else {
+                    message = T(L"Not enough resources.", L"资源不足。");
+                }
+            } else if (stellar::CycleColonySpecialization(
+                           game_, static_cast<std::size_t>(row.index))) {
+                message = std::wstring(T(L"Colony doctrine: ", L"殖民地定位：")) +
+                          ColonySpecName(game_.colonies[static_cast<std::size_t>(row.index)]
+                                             .specialization);
             } else {
-                message = T(L"Not enough resources.", L"资源不足。");
+                message = T(L"Need 10 influence to change doctrine.",
+                            L"改定位需要 10 影响力。");
             }
             break;
         case RowAction::kBuildWonder:
@@ -5384,6 +5458,8 @@ private:
         if (action == "fleet") return T(L"Squadron built.", L"舰队已建造。");
         if (action == "colonize") return T(L"Colony founded.", L"新殖民地已建立。");
         if (action == "colony") return T(L"Colony upgraded.", L"殖民地已升级。");
+        if (action == "colony_spec")
+            return T(L"Colony doctrine changed.", L"殖民地定位已调整。");
         if (action == "faction") return T(L"Doctrine locked.", L"治国路线已锁定。");
         if (action == "wonder") return T(L"Wonder completed.", L"奇观已建成。");
         if (action == "resolve_event") return T(L"Event resolved.", L"事件已处理。");

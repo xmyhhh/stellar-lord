@@ -164,6 +164,68 @@ void EnsureCommandCards(GameState& state) {
     }
 }
 
+// 殖民地专业化提供的全局修正。多个同类殖民地按等级叠加。
+struct ColonyModifiers {
+    double energy{1.0};
+    double minerals{1.0};
+    double food{1.0};
+    double alloy{1.0};
+    double research{1.0};
+    double influence{1.0};
+    double population{1.0};
+    double market_sell{1.0};
+    int fleet_capacity{0};
+};
+
+ColonyModifiers ComputeColonyModifiers(const GameState& state) {
+    ColonyModifiers mods;
+    for (const Colony& colony : state.colonies) {
+        const int level = std::max(1, colony.level);
+        switch (static_cast<ColonySpecialization>(colony.specialization)) {
+        case ColonySpecialization::kEnergy:
+            mods.energy *= 1.0 + 0.09 * level;
+            mods.food *= 1.0 - 0.03 * level;
+            break;
+        case ColonySpecialization::kMining:
+            mods.minerals *= 1.0 + 0.09 * level;
+            mods.energy *= 1.0 - 0.02 * level;
+            break;
+        case ColonySpecialization::kAgriculture:
+            mods.food *= 1.0 + 0.09 * level;
+            mods.alloy *= 1.0 - 0.03 * level;
+            break;
+        case ColonySpecialization::kIndustry:
+            mods.alloy *= 1.0 + 0.09 * level;
+            mods.food *= 1.0 - 0.03 * level;
+            break;
+        case ColonySpecialization::kResearch:
+            mods.research *= 1.0 + 0.09 * level;
+            mods.population *= 1.0 - 0.02 * level;
+            break;
+        case ColonySpecialization::kTrade:
+            mods.market_sell *= 1.0 + 0.02 * level;
+            mods.influence *= 1.0 + 0.04 * level;
+            break;
+        case ColonySpecialization::kFortress:
+            mods.fleet_capacity += 4 * level;
+            break;
+        case ColonySpecialization::kBalanced:
+        case ColonySpecialization::kCount:
+        default:
+            break;
+        }
+    }
+    mods.energy = std::clamp(mods.energy, 0.5, 2.5);
+    mods.minerals = std::clamp(mods.minerals, 0.5, 2.5);
+    mods.food = std::clamp(mods.food, 0.5, 2.5);
+    mods.alloy = std::clamp(mods.alloy, 0.5, 2.5);
+    mods.research = std::clamp(mods.research, 0.5, 2.5);
+    mods.influence = std::clamp(mods.influence, 1.0, 1.5);
+    mods.population = std::clamp(mods.population, 0.6, 1.5);
+    mods.market_sell = std::clamp(mods.market_sell, 1.0, 1.3);
+    return mods;
+}
+
 std::string JoinNumbers(const int* values, int count) {
     std::string text;
     for (int i = 0; i < count; ++i) {
@@ -242,6 +304,7 @@ double PopulationCapacity(const GameState& state) {
     if (HasFaction(state, FactionId::kCompact)) {
         capacity *= 1.25;
     }
+    capacity *= ComputeColonyModifiers(state).population;
     return capacity;
 }
 
@@ -272,7 +335,8 @@ double MoraleFactor(const GameState& state) {
 
 int FleetCapacity(const GameState& state) {
     int capacity = 20 + 12 * state.capital_level + 8 * TotalColonyLevels(state) +
-                   6 * state.buildings[static_cast<int>(BuildingId::kBarracks)];
+                   6 * state.buildings[static_cast<int>(BuildingId::kBarracks)] +
+                   ComputeColonyModifiers(state).fleet_capacity;
     if (HasWonder(state, kWonderOrbitalDock)) {
         capacity = static_cast<int>(static_cast<double>(capacity) * 1.5);
     }
@@ -340,6 +404,17 @@ Rates ComputeRates(const GameState& state) {
         break;
     }
 
+    // 殖民地专业化：同类殖民地按等级叠乘，形成明确的产能倾斜。
+    const ColonyModifiers colony = ComputeColonyModifiers(state);
+    rates.energy *= colony.energy;
+    rates.minerals *= colony.minerals;
+    rates.food *= colony.food;
+    rates.alloy *= colony.alloy;
+    rates.research *= colony.research;
+    rates.influence = 0.004 *
+                      static_cast<double>(1 + state.capital_level + TotalColonyLevels(state)) *
+                      colony.influence;
+
     rates.population_capacity = PopulationCapacity(state);
     const bool fed = state.food > 1.0 && state.energy > 1.0;
     rates.population_growth =
@@ -372,8 +447,7 @@ void Advance(GameState& state, double dt_seconds) {
         state.research += rates.research * step;
 
         // 影响力来自领土与行政：殖民地越多，增长越快。
-        state.influence +=
-            0.004 * static_cast<double>(1 + state.capital_level + TotalColonyLevels(state)) * step;
+        state.influence += rates.influence * step;
 
         // 工厂消耗矿物；矿物不足时按比例减产。
         const double factory_levels =
@@ -607,6 +681,53 @@ bool UpgradeColony(GameState& state, std::size_t index) {
     return true;
 }
 
+bool CanChangeColonySpecialization(const GameState& state, std::size_t index) {
+    if (index >= state.colonies.size()) {
+        return false;
+    }
+    if (state.colonies[index].specialization ==
+        static_cast<int>(ColonySpecialization::kBalanced)) {
+        return true;
+    }
+    return state.influence + 1e-9 >= kColonySpecializationCost;
+}
+
+bool SetColonySpecialization(GameState& state, std::size_t index,
+                             ColonySpecialization specialization) {
+    if (index >= state.colonies.size()) {
+        return false;
+    }
+    const int value = static_cast<int>(specialization);
+    if (value < 0 || value >= static_cast<int>(ColonySpecialization::kCount)) {
+        return false;
+    }
+    Colony& colony = state.colonies[index];
+    if (colony.specialization == value) {
+        return false;
+    }
+    // 第一次定位免费；已经定过位的殖民地改定位要花影响力。
+    if (colony.specialization != static_cast<int>(ColonySpecialization::kBalanced)) {
+        if (state.influence + 1e-9 < kColonySpecializationCost) {
+            return false;
+        }
+        state.influence = std::max(0.0, state.influence - kColonySpecializationCost);
+    }
+    colony.specialization = value;
+    return true;
+}
+
+bool CycleColonySpecialization(GameState& state, std::size_t index) {
+    if (index >= state.colonies.size()) {
+        return false;
+    }
+    int next = state.colonies[index].specialization + 1;
+    if (next >= static_cast<int>(ColonySpecialization::kCount)) {
+        next = static_cast<int>(ColonySpecialization::kBalanced);
+    }
+    return SetColonySpecialization(state, index,
+                                   static_cast<ColonySpecialization>(next));
+}
+
 bool ChooseFaction(GameState& state, int faction) {
     if (state.faction != static_cast<int>(FactionId::kNone)) {
         return false;
@@ -735,6 +856,7 @@ double MarketSellPrice(const GameState& state, int resource) {
     if (state.faction == static_cast<int>(FactionId::kGuild)) {
         price *= 1.08;
     }
+    price *= ComputeColonyModifiers(state).market_sell;
     return std::max(0.01, price);
 }
 
@@ -1623,7 +1745,7 @@ double Score(const GameState& state) {
 
 std::string SerializeState(const GameState& state) {
     std::string text;
-    text += "version=5\n";
+    text += "version=6\n";
     text += "energy=" + std::to_string(state.energy) + "\n";
     text += "minerals=" + std::to_string(state.minerals) + "\n";
     text += "food=" + std::to_string(state.food) + "\n";
@@ -1656,6 +1778,8 @@ std::string SerializeState(const GameState& state) {
             text.push_back(',');
         }
         text += std::to_string(state.colonies[i].level);
+        text.push_back(':');
+        text += std::to_string(state.colonies[i].specialization);
     }
     text += "\n";
     text += "events=";
@@ -1948,8 +2072,18 @@ bool DeserializeState(const std::string& text, GameState& out_state) {
                 if (item.empty()) {
                     continue;
                 }
-                state.colonies.push_back(
-                    Colony{std::clamp(std::atoi(item.c_str()), 1, kMaxColonyLevel)});
+                const std::size_t colon = item.find(':');
+                const std::string level_text =
+                    colon == std::string::npos ? item : item.substr(0, colon);
+                Colony colony;
+                colony.level = std::clamp(std::atoi(level_text.c_str()), 1, kMaxColonyLevel);
+                if (colon != std::string::npos) {
+                    const std::string spec_text = item.substr(colon + 1);
+                    colony.specialization = std::clamp(
+                        std::atoi(spec_text.c_str()), 0,
+                        static_cast<int>(ColonySpecialization::kCount) - 1);
+                }
+                state.colonies.push_back(colony);
             }
         }
     }

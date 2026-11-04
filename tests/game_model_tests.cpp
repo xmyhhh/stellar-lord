@@ -108,6 +108,84 @@ void TestColonizeRequiresPopulation() {
     CHECK(!stellar::CanColonize(state));
 }
 
+void TestColonySpecialization() {
+    stellar::GameState base = stellar::MakeNewGame(0.0);
+    base.colonies.push_back(stellar::Colony{2});
+
+    stellar::GameState energy = base;
+    energy.colonies[0].specialization =
+        static_cast<int>(stellar::ColonySpecialization::kEnergy);
+    CHECK(stellar::ComputeRates(energy).energy >
+          stellar::ComputeRates(base).energy);
+    CHECK(stellar::ComputeRates(energy).food <
+          stellar::ComputeRates(base).food);
+
+    stellar::GameState mining = base;
+    mining.colonies[0].specialization =
+        static_cast<int>(stellar::ColonySpecialization::kMining);
+    CHECK(stellar::ComputeRates(mining).minerals >
+          stellar::ComputeRates(base).minerals);
+    CHECK(stellar::ComputeRates(mining).energy <
+          stellar::ComputeRates(base).energy);
+
+    stellar::GameState research = base;
+    research.colonies[0].specialization =
+        static_cast<int>(stellar::ColonySpecialization::kResearch);
+    CHECK(stellar::ComputeRates(research).research >
+          stellar::ComputeRates(base).research);
+    CHECK(stellar::PopulationCapacity(research) <
+          stellar::PopulationCapacity(base));
+
+    stellar::GameState trade = base;
+    trade.colonies[0].specialization =
+        static_cast<int>(stellar::ColonySpecialization::kTrade);
+    CHECK(stellar::MarketSellPrice(trade, 1) >
+          stellar::MarketSellPrice(base, 1));
+    CHECK(stellar::ComputeRates(trade).influence >
+          stellar::ComputeRates(base).influence);
+
+    stellar::GameState fortress = base;
+    fortress.colonies[0].specialization =
+        static_cast<int>(stellar::ColonySpecialization::kFortress);
+    CHECK(stellar::FleetCapacity(fortress) ==
+          stellar::FleetCapacity(base) + 8);
+
+    // 第一次定位免费，之后每次改定位消耗 10 影响力。
+    stellar::GameState doctrine = stellar::MakeNewGame(0.0);
+    doctrine.colonies.push_back(stellar::Colony{1});
+    CHECK(stellar::CanChangeColonySpecialization(doctrine, 0));
+    CHECK(stellar::SetColonySpecialization(
+        doctrine, 0, stellar::ColonySpecialization::kEnergy));
+    CHECK(doctrine.influence == 0.0);
+    CHECK(!stellar::SetColonySpecialization(
+        doctrine, 0, stellar::ColonySpecialization::kMining));
+
+    doctrine.influence = 25.0;
+    CHECK(stellar::SetColonySpecialization(
+        doctrine, 0, stellar::ColonySpecialization::kMining));
+    CHECK(NearlyEqual(doctrine.influence, 15.0));
+    CHECK(stellar::CycleColonySpecialization(doctrine, 0));
+    CHECK(doctrine.colonies[0].specialization ==
+          static_cast<int>(stellar::ColonySpecialization::kAgriculture));
+    CHECK(NearlyEqual(doctrine.influence, 5.0));
+    CHECK(!stellar::CanChangeColonySpecialization(doctrine, 0));
+
+    // 专业化必须随存档一起往返，并兼容旧的纯等级格式。
+    const std::string text = stellar::SerializeState(doctrine);
+    CHECK(text.rfind("version=6\n", 0) == 0);
+    stellar::GameState loaded{};
+    CHECK(stellar::DeserializeState(text, loaded));
+    CHECK(loaded.colonies.size() == 1);
+    CHECK(loaded.colonies[0].specialization ==
+          static_cast<int>(stellar::ColonySpecialization::kAgriculture));
+
+    stellar::GameState legacy{};
+    CHECK(stellar::DeserializeState("version=5\ncolonies=2,1\n", legacy));
+    CHECK(legacy.colonies.size() == 2);
+    CHECK(legacy.colonies[0].level == 2);
+    CHECK(legacy.colonies[0].specialization == 0);
+}
+
 void TestNeutralBattle() {
     stellar::GameState weak = stellar::MakeNewGame(0.0);
     weak.fleet = 5;
@@ -132,7 +210,8 @@ void TestPlayerBattleCapturesColony() {
     attacker.fleet = 500;
     stellar::GameState defender = stellar::MakeNewGame(0.0);
     defender.fleet = 10;
-    defender.colonies.push_back(stellar::Colony{1});
+    defender.colonies.push_back(
+        stellar::Colony{2, static_cast<int>(stellar::ColonySpecialization::kFortress)});
     defender.minerals = 500.0;
     defender.alloy = 200.0;
 
@@ -140,6 +219,9 @@ void TestPlayerBattleCapturesColony() {
     CHECK(result.won);
     CHECK(result.captured);
     CHECK(attacker.colonies.size() == 1);
+    CHECK(attacker.colonies[0].level == 2);
+    CHECK(attacker.colonies[0].specialization ==
+          static_cast<int>(stellar::ColonySpecialization::kFortress));
     CHECK(defender.colonies.empty());
     CHECK(defender.minerals < 500.0);
 }
@@ -606,6 +688,7 @@ int main() {
     TestResearch();
     TestColonize();
     TestColonizeRequiresPopulation();
+    TestColonySpecialization();
     TestNeutralBattle();
     TestPlayerBattleCapturesColony();
     TestFactionChoice();
