@@ -6,3 +6,4 @@ out/
 *.user
 *.suo
 *.layout.txt
+selftest_report.txt

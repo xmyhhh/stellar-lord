@@ -49,9 +49,36 @@ enum class ColonySpecialization {
     kCount = 8,
 };
 
+// 殖民地特质：每颗星球天生的环境，不随定位改变。
+enum class ColonyTrait {
+    kNone = 0,
+    kRichMinerals = 1,    // 富矿：矿物 +30%
+    kFertile = 2,         // 沃土：食物 +30%
+    kResearchRuins = 3,   // 科研遗迹：科研 +20%，事件更频繁
+    kTidalLock = 4,       // 潮汐锁定：能源 +20%，人口上限 -10%
+    kToxicAtmosphere = 5, // 有毒大气：合金 +20%，人口增长 -20%
+    kAncientOrbit = 6,    // 古代轨道：防御 +30%
+    kCount = 7,
+};
+
+// 殖民地区域：每座殖民地按等级解锁槽位，每个区域可升到 3 级。
+enum class DistrictId {
+    kPower = 0,       // 能源区：能源 +20%/级
+    kMining = 1,      // 矿业区：矿物 +20%/级
+    kAgriculture = 2, // 农业区：食物 +20%/级
+    kIndustry = 3,    // 工业区：合金 +20%/级
+    kResearch = 4,    // 科研区：科研 +20%/级
+    kMilitary = 5,    // 军事区：舰队上限 +5/级，防御 +15%/级
+    kCulture = 6,     // 文化区：影响力 +2/分钟/级
+    kPort = 7,        // 港口区：市场卖价 +5%/级，买价 -3%/级
+    kCount = 8,
+};
+
 struct Colony {
     int level{1};
     int specialization{0};  // ColonySpecialization
+    int trait{0};           // ColonyTrait
+    int districts[static_cast<int>(DistrictId::kCount)]{0, 0, 0, 0, 0, 0, 0, 0};
 };
 
 // 治国路线。开局所有人都是平民，第一次选择决定这局怎么玩。
@@ -245,6 +272,8 @@ constexpr int kMaxBuildingLevel = 10;
 constexpr int kMaxTechLevel = 5;
 constexpr int kMaxCapitalLevel = 10;
 constexpr int kMaxColonyLevel = 5;
+constexpr int kMaxDistrictLevel = 3;
+constexpr int kMaxDistrictSlots = 5;
 constexpr double kColonySpecializationCost = 10.0;  // 影响力
 constexpr int kMaxPendingEvents = 4;
 constexpr int kWonderCount = 3;
@@ -278,6 +307,8 @@ double LaborFactor(const GameState& state);
 double MoraleFactor(const GameState& state);
 int FleetCapacity(const GameState& state);
 int TotalColonyLevels(const GameState& state);
+double ColonyDefenseMultiplier(const GameState& state);
+double EventChanceMultiplier(const GameState& state);
 double Score(const GameState& state);
 
 // 治国路线：一局只能选一次。
@@ -342,6 +373,13 @@ bool CanChangeColonySpecialization(const GameState& state, std::size_t index);
 bool SetColonySpecialization(GameState& state, std::size_t index,
                              ColonySpecialization specialization);
 bool CycleColonySpecialization(GameState& state, std::size_t index);
+
+// 殖民地区域：槽位随殖民地等级解锁，每个区域 0–3 级。
+int DistrictSlots(const Colony& colony);
+int DistrictCount(const Colony& colony);
+Cost DistrictCost(const GameState& state, std::size_t colony_index, int district);
+bool CanDevelopDistrict(const GameState& state, std::size_t colony_index, int district);
+bool DevelopDistrict(GameState& state, std::size_t colony_index, int district);
 
 // 科研
 double TechCost(const GameState& state, TechId id);

@@ -7,7 +7,7 @@
 namespace rift_server {
 
 // 客户端与服务端共用。任何协议字段或规则不兼容时递增，旧版本会被拒绝联机。
-constexpr int kProtocolVersion = 6;
+constexpr int kProtocolVersion = 8;
 
 // 同步完成 socket / bind / listen，成功后才返回；错误信息可选。
 bool Start(unsigned short port, std::string* error_message = nullptr);

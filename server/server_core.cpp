@@ -847,6 +847,17 @@ HttpResponse HandleRoomAction(const HttpRequest& request) {
                     static_cast<stellar::ColonySpecialization>(spec));
             }
         }
+    } else if (action == "district") {
+        const size_t colon = arg.find(':');
+        if (colon != std::string::npos) {
+            const int colony_index = std::max(0, std::atoi(arg.substr(0, colon).c_str()));
+            const int district = std::atoi(arg.substr(colon + 1).c_str());
+            if (district >= 0 &&
+                district < static_cast<int>(stellar::DistrictId::kCount)) {
+                accepted = stellar::DevelopDistrict(
+                    member->state, static_cast<std::size_t>(colony_index), district);
+            }
+        }
     } else if (action == "faction") {
         accepted = stellar::ChooseFaction(member->state, index);
     } else if (action == "sell") {

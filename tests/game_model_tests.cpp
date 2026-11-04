@@ -172,7 +172,7 @@ void TestColonySpecialization() {
 
     // 专业化必须随存档一起往返，并兼容旧的纯等级格式。
     const std::string text = stellar::SerializeState(doctrine);
-    CHECK(text.rfind("version=6\n", 0) == 0);
+    CHECK(text.rfind("version=8\n", 0) == 0);
     stellar::GameState loaded{};
     CHECK(stellar::DeserializeState(text, loaded));
     CHECK(loaded.colonies.size() == 1);
@@ -184,6 +184,167 @@ void TestColonySpecialization() {
     CHECK(legacy.colonies.size() == 2);
     CHECK(legacy.colonies[0].level == 2);
     CHECK(legacy.colonies[0].specialization == 0);
+    CHECK(legacy.colonies[0].trait == 0);
+}
+
+void TestColonyTraits() {
+    auto with_trait = [](stellar::ColonyTrait trait) {
+        stellar::GameState state = stellar::MakeNewGame(0.0);
+        state.buildings[static_cast<int>(stellar::BuildingId::kFactory)] = 1;
+        state.colonies.push_back(
+            stellar::Colony{1, 0, static_cast<int>(trait)});
+        return state;
+    };
+    stellar::GameState base = with_trait(stellar::ColonyTrait::kNone);
+
+    CHECK(stellar::ComputeRates(with_trait(stellar::ColonyTrait::kRichMinerals)).minerals >
+          stellar::ComputeRates(base).minerals);
+    CHECK(stellar::ComputeRates(with_trait(stellar::ColonyTrait::kFertile)).food >
+          stellar::ComputeRates(base).food);
+
+    stellar::GameState ruins = with_trait(stellar::ColonyTrait::kResearchRuins);
+    CHECK(stellar::ComputeRates(ruins).research >
+          stellar::ComputeRates(base).research);
+    CHECK(stellar::EventChanceMultiplier(ruins) >
+          stellar::EventChanceMultiplier(base));
+
+    stellar::GameState tidal = with_trait(stellar::ColonyTrait::kTidalLock);
+    CHECK(stellar::ComputeRates(tidal).energy >
+          stellar::ComputeRates(base).energy);
+    CHECK(stellar::PopulationCapacity(tidal) <
+          stellar::PopulationCapacity(base));
+
+    stellar::GameState toxic = with_trait(stellar::ColonyTrait::kToxicAtmosphere);
+    CHECK(stellar::ComputeRates(toxic).alloy >
+          stellar::ComputeRates(base).alloy);
+    CHECK(stellar::ComputeRates(toxic).population_growth <
+          stellar::ComputeRates(base).population_growth);
+
+    stellar::GameState orbit = with_trait(stellar::ColonyTrait::kAncientOrbit);
+    CHECK(stellar::ColonyDefenseMultiplier(orbit) >
+          stellar::ColonyDefenseMultiplier(base));
+    CHECK(NearlyEqual(stellar::ColonyDefenseMultiplier(base), 1.0));
+
+    // 新殖民地一定带一个非空特质，并随存档往返。
+    stellar::GameState colonized = stellar::MakeNewGame(123.0);
+    colonized.alloy = 10000.0;
+    colonized.food = 10000.0;
+    colonized.population = 50.0;
+    CHECK(stellar::Colonize(colonized));
+    CHECK(colonized.colonies[0].trait > 0);
+    CHECK(colonized.colonies[0].trait <
+          static_cast<int>(stellar::ColonyTrait::kCount));
+    colonized.colonies[0].trait =
+        static_cast<int>(stellar::ColonyTrait::kToxicAtmosphere);
+    const std::string text = stellar::SerializeState(colonized);
+    stellar::GameState loaded{};
+    CHECK(stellar::DeserializeState(text, loaded));
+    CHECK(loaded.colonies.size() == 1);
+    CHECK(loaded.colonies[0].trait ==
+          static_cast<int>(stellar::ColonyTrait::kToxicAtmosphere));
+
+    // 6 版只写等级:定位；读入后特质默认为无。
+    stellar::GameState old_format{};
+    CHECK(stellar::DeserializeState("version=6\ncolonies=2:4\n", old_format));
+    CHECK(old_format.colonies.size() == 1);
+    CHECK(old_format.colonies[0].specialization ==
+          static_cast<int>(stellar::ColonySpecialization::kIndustry));
+    CHECK(old_format.colonies[0].trait == 0);
+}
+
+void TestColonyDistricts() {
+    stellar::Colony slots;
+    slots.level = 1;
+    CHECK(stellar::DistrictSlots(slots) == 1);
+    slots.level = 3;
+    CHECK(stellar::DistrictSlots(slots) == 3);
+    slots.level = 5;
+    CHECK(stellar::DistrictSlots(slots) == 5);
+    CHECK(stellar::DistrictCount(slots) == 0);
+
+    stellar::GameState state = stellar::MakeNewGame(0.0);
+    state.colonies.push_back(stellar::Colony{1});
+    state.minerals = 10000.0;
+    state.alloy = 10000.0;
+    state.energy = 10000.0;
+    state.food = 10000.0;
+
+    const double energy_before = stellar::ComputeRates(state).energy;
+    CHECK(stellar::DevelopDistrict(
+        state, 0, static_cast<int>(stellar::DistrictId::kPower)));
+    CHECK(state.colonies[0].districts[static_cast<int>(stellar::DistrictId::kPower)] == 1);
+    CHECK(stellar::ComputeRates(state).energy > energy_before);
+
+    // 1 级殖民地只有 1 个槽位。
+    CHECK(!stellar::CanDevelopDistrict(
+        state, 0, static_cast<int>(stellar::DistrictId::kMining)));
+    CHECK(!stellar::DevelopDistrict(
+        state, 0, static_cast<int>(stellar::DistrictId::kMining)));
+
+    // 区域可以升到 3 级，到达上限后不能再升。
+    CHECK(stellar::DevelopDistrict(
+        state, 0, static_cast<int>(stellar::DistrictId::kPower)));
+    CHECK(stellar::DevelopDistrict(
+        state, 0, static_cast<int>(stellar::DistrictId::kPower)));
+    CHECK(state.colonies[0].districts[static_cast<int>(stellar::DistrictId::kPower)] == 3);
+    CHECK(!stellar::CanDevelopDistrict(
+        state, 0, static_cast<int>(stellar::DistrictId::kPower)));
+
+    // 殖民地升级后解锁第二个槽位。
+    state.colonies[0].level = 2;
+    CHECK(stellar::CanDevelopDistrict(
+        state, 0, static_cast<int>(stellar::DistrictId::kMining)));
+    CHECK(stellar::DevelopDistrict(
+        state, 0, static_cast<int>(stellar::DistrictId::kMining)));
+    CHECK(stellar::DistrictCount(state.colonies[0]) == 2);
+
+    stellar::GameState military = stellar::MakeNewGame(0.0);
+    military.colonies.push_back(stellar::Colony{1});
+    military.minerals = 10000.0;
+    military.alloy = 10000.0;
+    const int fleet_capacity_before = stellar::FleetCapacity(military);
+    CHECK(stellar::DevelopDistrict(
+        military, 0, static_cast<int>(stellar::DistrictId::kMilitary)));
+    CHECK(stellar::FleetCapacity(military) == fleet_capacity_before + 5);
+    CHECK(stellar::ColonyDefenseMultiplier(military) > 1.0);
+
+    stellar::GameState culture = stellar::MakeNewGame(0.0);
+    culture.colonies.push_back(stellar::Colony{1});
+    culture.minerals = 10000.0;
+    culture.alloy = 10000.0;
+    const double influence_before = stellar::ComputeRates(culture).influence;
+    CHECK(stellar::DevelopDistrict(
+        culture, 0, static_cast<int>(stellar::DistrictId::kCulture)));
+    CHECK(stellar::ComputeRates(culture).influence > influence_before);
+
+    stellar::GameState plain = stellar::MakeNewGame(0.0);
+    plain.colonies.push_back(stellar::Colony{1});
+    stellar::GameState port = plain;
+    port.minerals = 10000.0;
+    port.alloy = 10000.0;
+    CHECK(stellar::DevelopDistrict(
+        port, 0, static_cast<int>(stellar::DistrictId::kPort)));
+    CHECK(stellar::MarketSellPrice(port, 1) > stellar::MarketSellPrice(plain, 1));
+    CHECK(stellar::MarketBuyPrice(port, 1) < stellar::MarketBuyPrice(plain, 1));
+
+    // 区域等级随存档往返，旧格式缺省为 0。
+    stellar::GameState built = stellar::MakeNewGame(321.0);
+    built.colonies.push_back(stellar::Colony{3});
+    built.colonies[0].districts[static_cast<int>(stellar::DistrictId::kPower)] = 3;
+    built.colonies[0].districts[static_cast<int>(stellar::DistrictId::kMilitary)] = 1;
+    built.colonies[0].districts[static_cast<int>(stellar::DistrictId::kCulture)] = 2;
+    const std::string text = stellar::SerializeState(built);
+    stellar::GameState loaded{};
+    CHECK(stellar::DeserializeState(text, loaded));
+    CHECK(loaded.colonies.size() == 1);
+    CHECK(loaded.colonies[0].districts[static_cast<int>(stellar::DistrictId::kPower)] == 3);
+    CHECK(loaded.colonies[0].districts[static_cast<int>(stellar::DistrictId::kMilitary)] == 1);
+    CHECK(loaded.colonies[0].districts[static_cast<int>(stellar::DistrictId::kCulture)] == 2);
+
+    stellar::GameState old_format{};
+    CHECK(stellar::DeserializeState("version=7\ncolonies=2:4:1\n", old_format));
+    CHECK(old_format.colonies.size() == 1);
+    CHECK(old_format.colonies[0].districts[static_cast<int>(stellar::DistrictId::kPower)] == 0);
 }
 
 void TestNeutralBattle() {
@@ -211,7 +372,8 @@ void TestPlayerBattleCapturesColony() {
     stellar::GameState defender = stellar::MakeNewGame(0.0);
     defender.fleet = 10;
     defender.colonies.push_back(
-        stellar::Colony{2, static_cast<int>(stellar::ColonySpecialization::kFortress)});
+        stellar::Colony{2, static_cast<int>(stellar::ColonySpecialization::kFortress),
+                        static_cast<int>(stellar::ColonyTrait::kAncientOrbit)});
     defender.minerals = 500.0;
     defender.alloy = 200.0;
 
@@ -222,6 +384,8 @@ void TestPlayerBattleCapturesColony() {
     CHECK(attacker.colonies[0].level == 2);
     CHECK(attacker.colonies[0].specialization ==
           static_cast<int>(stellar::ColonySpecialization::kFortress));
+    CHECK(attacker.colonies[0].trait ==
+          static_cast<int>(stellar::ColonyTrait::kAncientOrbit));
     CHECK(defender.colonies.empty());
     CHECK(defender.minerals < 500.0);
 }
@@ -689,6 +853,8 @@ int main() {
     TestColonize();
     TestColonizeRequiresPopulation();
     TestColonySpecialization();
+    TestColonyTraits();
+    TestColonyDistricts();
     TestNeutralBattle();
     TestPlayerBattleCapturesColony();
     TestFactionChoice();

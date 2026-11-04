@@ -172,8 +172,11 @@ struct ColonyModifiers {
     double alloy{1.0};
     double research{1.0};
     double influence{1.0};
+    double influence_flat{0.0};
     double population{1.0};
+    double population_growth{1.0};
     double market_sell{1.0};
+    double market_buy{1.0};
     int fleet_capacity{0};
 };
 
@@ -214,6 +217,69 @@ ColonyModifiers ComputeColonyModifiers(const GameState& state) {
         default:
             break;
         }
+
+        switch (static_cast<ColonyTrait>(colony.trait)) {
+        case ColonyTrait::kRichMinerals:
+            mods.minerals *= 1.30;
+            break;
+        case ColonyTrait::kFertile:
+            mods.food *= 1.30;
+            break;
+        case ColonyTrait::kResearchRuins:
+            mods.research *= 1.20;
+            break;
+        case ColonyTrait::kTidalLock:
+            mods.energy *= 1.20;
+            mods.population *= 0.90;
+            break;
+        case ColonyTrait::kToxicAtmosphere:
+            mods.alloy *= 1.20;
+            mods.population_growth *= 0.80;
+            break;
+        case ColonyTrait::kAncientOrbit:
+        case ColonyTrait::kNone:
+        case ColonyTrait::kCount:
+        default:
+            break;
+        }
+
+        // 区域：每个殖民地同一类型最多一个，按区域等级线性叠加。
+        for (int d = 0; d < static_cast<int>(DistrictId::kCount); ++d) {
+            const int district_level = std::clamp(colony.districts[d], 0, kMaxDistrictLevel);
+            if (district_level <= 0) {
+                continue;
+            }
+            switch (static_cast<DistrictId>(d)) {
+            case DistrictId::kPower:
+                mods.energy *= 1.0 + 0.20 * district_level;
+                break;
+            case DistrictId::kMining:
+                mods.minerals *= 1.0 + 0.20 * district_level;
+                break;
+            case DistrictId::kAgriculture:
+                mods.food *= 1.0 + 0.20 * district_level;
+                break;
+            case DistrictId::kIndustry:
+                mods.alloy *= 1.0 + 0.20 * district_level;
+                break;
+            case DistrictId::kResearch:
+                mods.research *= 1.0 + 0.20 * district_level;
+                break;
+            case DistrictId::kMilitary:
+                mods.fleet_capacity += 5 * district_level;
+                break;
+            case DistrictId::kCulture:
+                mods.influence_flat += (2.0 / 60.0) * district_level;
+                break;
+            case DistrictId::kPort:
+                mods.market_sell *= 1.0 + 0.05 * district_level;
+                mods.market_buy *= 1.0 - 0.03 * district_level;
+                break;
+            case DistrictId::kCount:
+            default:
+                break;
+            }
+        }
     }
     mods.energy = std::clamp(mods.energy, 0.5, 2.5);
     mods.minerals = std::clamp(mods.minerals, 0.5, 2.5);
@@ -222,8 +288,15 @@ ColonyModifiers ComputeColonyModifiers(const GameState& state) {
     mods.research = std::clamp(mods.research, 0.5, 2.5);
     mods.influence = std::clamp(mods.influence, 1.0, 1.5);
     mods.population = std::clamp(mods.population, 0.6, 1.5);
+    mods.population_growth = std::clamp(mods.population_growth, 0.5, 1.5);
     mods.market_sell = std::clamp(mods.market_sell, 1.0, 1.3);
+    mods.market_buy = std::clamp(mods.market_buy, 0.7, 1.0);
     return mods;
+}
+
+int RandomColonyTrait(GameState& state) {
+    const int count = static_cast<int>(ColonyTrait::kCount) - 1;
+    return 1 + static_cast<int>(Random01(state.rng) * static_cast<double>(count));
 }
 
 std::string JoinNumbers(const int* values, int count) {
@@ -351,6 +424,30 @@ int TotalColonyLevels(const GameState& state) {
     return total;
 }
 
+double ColonyDefenseMultiplier(const GameState& state) {
+    double multiplier = 1.0;
+    for (const Colony& colony : state.colonies) {
+        if (static_cast<ColonyTrait>(colony.trait) == ColonyTrait::kAncientOrbit) {
+            multiplier += 0.30;
+        }
+        const int military =
+            std::clamp(colony.districts[static_cast<int>(DistrictId::kMilitary)], 0,
+                       kMaxDistrictLevel);
+        multiplier += 0.15 * static_cast<double>(military);
+    }
+    return std::clamp(multiplier, 1.0, 2.5);
+}
+
+double EventChanceMultiplier(const GameState& state) {
+    double multiplier = 1.0;
+    for (const Colony& colony : state.colonies) {
+        if (static_cast<ColonyTrait>(colony.trait) == ColonyTrait::kResearchRuins) {
+            multiplier += 0.15;
+        }
+    }
+    return std::clamp(multiplier, 1.0, 2.5);
+}
+
 Rates ComputeRates(const GameState& state) {
     Rates rates;
     const double production = ProductionMultiplier(state);
@@ -412,8 +509,9 @@ Rates ComputeRates(const GameState& state) {
     rates.alloy *= colony.alloy;
     rates.research *= colony.research;
     rates.influence = 0.004 *
-                      static_cast<double>(1 + state.capital_level + TotalColonyLevels(state)) *
-                      colony.influence;
+                          static_cast<double>(1 + state.capital_level + TotalColonyLevels(state)) *
+                          colony.influence +
+                      colony.influence_flat;
 
     rates.population_capacity = PopulationCapacity(state);
     const bool fed = state.food > 1.0 && state.energy > 1.0;
@@ -421,6 +519,9 @@ Rates ComputeRates(const GameState& state) {
         fed ? 0.05 * TechMultiplier(tech(TechId::kAgriculture), 0.25) : -0.08;
     if (HasFaction(state, FactionId::kCompact) && fed) {
         rates.population_growth *= 1.15;
+    }
+    if (rates.population_growth > 0.0) {
+        rates.population_growth *= colony.population_growth;
     }
     rates.fleet_growth = 0.35 * barracks * TechMultiplier(tech(TechId::kMilitary), 0.15);
     if (HasWonder(state, kWonderOrbitalDock)) {
@@ -563,13 +664,15 @@ void Advance(GameState& state, double dt_seconds) {
             expedition_it = state.expeditions.erase(expedition_it);
         }
 
-        // 事件卡：每 1.5-3 分钟来一张；超过队列上限时，最旧的一张按保守选项结算。
+        // 事件卡：每 1.5-3 分钟来一张；科研遗迹会让事件更频繁。
         if (state.play_seconds + 1e-9 >= state.next_event_seconds) {
             const int event_count = static_cast<int>(EventId::kCount);
             const int id = std::min(event_count - 1,
                                     static_cast<int>(Random01(state.rng) * event_count));
             state.events.push_back(GameEvent{id});
-            state.next_event_seconds = state.play_seconds + 90.0 + Random01(state.rng) * 90.0;
+            state.next_event_seconds =
+                state.play_seconds +
+                (90.0 + Random01(state.rng) * 90.0) / EventChanceMultiplier(state);
             while (state.events.size() > static_cast<std::size_t>(kMaxPendingEvents)) {
                 ResolveEvent(state, 0, false);
             }
@@ -728,6 +831,60 @@ bool CycleColonySpecialization(GameState& state, std::size_t index) {
                                    static_cast<ColonySpecialization>(next));
 }
 
+int DistrictSlots(const Colony& colony) {
+    return std::clamp(std::max(1, colony.level), 1, kMaxDistrictSlots);
+}
+
+int DistrictCount(const Colony& colony) {
+    int count = 0;
+    for (int d = 0; d < static_cast<int>(DistrictId::kCount); ++d) {
+        if (std::clamp(colony.districts[d], 0, kMaxDistrictLevel) > 0) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+Cost DistrictCost(const GameState& state, std::size_t colony_index, int district) {
+    Cost cost;
+    if (colony_index >= state.colonies.size() || district < 0 ||
+        district >= static_cast<int>(DistrictId::kCount)) {
+        return cost;
+    }
+    const int level = std::clamp(
+        state.colonies[colony_index].districts[district], 0, kMaxDistrictLevel);
+    const int target = std::min(kMaxDistrictLevel, level + 1);
+    Cost base;
+    base.minerals = 55.0;
+    base.alloy = 18.0;
+    return ScaleCost(base, Pow(2.0, target - 1));
+}
+
+bool CanDevelopDistrict(const GameState& state, std::size_t colony_index, int district) {
+    if (colony_index >= state.colonies.size() || district < 0 ||
+        district >= static_cast<int>(DistrictId::kCount)) {
+        return false;
+    }
+    const Colony& colony = state.colonies[colony_index];
+    const int level = std::clamp(colony.districts[district], 0, kMaxDistrictLevel);
+    if (level >= kMaxDistrictLevel) {
+        return false;
+    }
+    if (level == 0 && DistrictCount(colony) >= DistrictSlots(colony)) {
+        return false;
+    }
+    return CanPay(state, DistrictCost(state, colony_index, district));
+}
+
+bool DevelopDistrict(GameState& state, std::size_t colony_index, int district) {
+    if (!CanDevelopDistrict(state, colony_index, district)) {
+        return false;
+    }
+    Pay(state, DistrictCost(state, colony_index, district));
+    ++state.colonies[colony_index].districts[district];
+    return true;
+}
+
 bool ChooseFaction(GameState& state, int faction) {
     if (state.faction != static_cast<int>(FactionId::kNone)) {
         return false;
@@ -870,6 +1027,7 @@ double MarketBuyPrice(const GameState& state, int resource) {
     if (state.faction == static_cast<int>(FactionId::kGuild)) {
         price *= 0.92;
     }
+    price *= ComputeColonyModifiers(state).market_buy;
     return std::max(0.01, price);
 }
 
@@ -1386,7 +1544,9 @@ bool Colonize(GameState& state) {
     }
     Pay(state, ColonizeCost(state));
     state.population = std::max(3.0, state.population - 4.0);
-    state.colonies.push_back(Colony{1});
+    Colony colony;
+    colony.trait = RandomColonyTrait(state);
+    state.colonies.push_back(colony);
     return true;
 }
 
@@ -1564,7 +1724,9 @@ BattleResult AttackNeutral(GameState& attacker) {
         attacker.fleet = std::max(0, attacker.fleet - result.attacker_loss);
         attacker.minerals += result.loot_minerals;
         attacker.alloy += result.loot_alloy;
-        attacker.colonies.push_back(Colony{1});
+        Colony colony;
+        colony.trait = RandomColonyTrait(attacker);
+        attacker.colonies.push_back(colony);
         ++attacker.battles_won;
         AddMorale(attacker, 2.0);
     } else {
@@ -1631,9 +1793,10 @@ BattleResult RaidPlayer(GameState& attacker, GameState& defender) {
         static_cast<double>(attacker.fleet) *
         (1.0 + 0.08 * static_cast<double>(attacker.techs[static_cast<int>(TechId::kMilitary)]));
     const double defense_power =
-        6.0 + 0.62 * static_cast<double>(defender.fleet) +
-        4.0 * static_cast<double>(TotalColonyLevels(defender)) +
-        3.0 * static_cast<double>(defender.capital_level);
+        (6.0 + 0.62 * static_cast<double>(defender.fleet) +
+         4.0 * static_cast<double>(TotalColonyLevels(defender)) +
+         3.0 * static_cast<double>(defender.capital_level)) *
+        ColonyDefenseMultiplier(defender);
 
     if (attack_power >= defense_power) {
         result.won = true;
@@ -1683,10 +1846,11 @@ BattleResult AttackPlayer(GameState& attacker, GameState& defender) {
         static_cast<double>(attacker.fleet) *
         (1.0 + 0.08 * static_cast<double>(attacker.techs[static_cast<int>(TechId::kMilitary)]));
     const double defense_power =
-        8.0 + 0.5 * static_cast<double>(defender.fleet) +
-        6.0 * static_cast<double>(TotalColonyLevels(defender)) +
-        4.0 * static_cast<double>(defender.capital_level) +
-        0.06 * static_cast<double>(defender.techs[static_cast<int>(TechId::kMilitary)]);
+        (8.0 + 0.5 * static_cast<double>(defender.fleet) +
+         6.0 * static_cast<double>(TotalColonyLevels(defender)) +
+         4.0 * static_cast<double>(defender.capital_level) +
+         0.06 * static_cast<double>(defender.techs[static_cast<int>(TechId::kMilitary)])) *
+        ColonyDefenseMultiplier(defender);
 
     if (attack_power >= defense_power) {
         result.won = true;
@@ -1745,7 +1909,7 @@ double Score(const GameState& state) {
 
 std::string SerializeState(const GameState& state) {
     std::string text;
-    text += "version=6\n";
+    text += "version=8\n";
     text += "energy=" + std::to_string(state.energy) + "\n";
     text += "minerals=" + std::to_string(state.minerals) + "\n";
     text += "food=" + std::to_string(state.food) + "\n";
@@ -1780,6 +1944,13 @@ std::string SerializeState(const GameState& state) {
         text += std::to_string(state.colonies[i].level);
         text.push_back(':');
         text += std::to_string(state.colonies[i].specialization);
+        text.push_back(':');
+        text += std::to_string(state.colonies[i].trait);
+        text.push_back(':');
+        for (int d = 0; d < static_cast<int>(DistrictId::kCount); ++d) {
+            text.push_back(static_cast<char>(
+                '0' + std::clamp(state.colonies[i].districts[d], 0, kMaxDistrictLevel)));
+        }
     }
     text += "\n";
     text += "events=";
@@ -2078,10 +2249,33 @@ bool DeserializeState(const std::string& text, GameState& out_state) {
                 Colony colony;
                 colony.level = std::clamp(std::atoi(level_text.c_str()), 1, kMaxColonyLevel);
                 if (colon != std::string::npos) {
-                    const std::string spec_text = item.substr(colon + 1);
-                    colony.specialization = std::clamp(
-                        std::atoi(spec_text.c_str()), 0,
-                        static_cast<int>(ColonySpecialization::kCount) - 1);
+                    std::vector<std::string> parts;
+                    std::istringstream fields(item);
+                    std::string part;
+                    while (std::getline(fields, part, ':')) {
+                        parts.push_back(part);
+                    }
+                    if (parts.size() >= 2) {
+                        colony.specialization = std::clamp(
+                            std::atoi(parts[1].c_str()), 0,
+                            static_cast<int>(ColonySpecialization::kCount) - 1);
+                    }
+                    if (parts.size() >= 3) {
+                        colony.trait = std::clamp(
+                            std::atoi(parts[2].c_str()), 0,
+                            static_cast<int>(ColonyTrait::kCount) - 1);
+                    }
+                    if (parts.size() >= 4) {
+                        const std::string& district_text = parts[3];
+                        for (int d = 0;
+                             d < static_cast<int>(DistrictId::kCount) &&
+                             d < static_cast<int>(district_text.size());
+                             ++d) {
+                            colony.districts[d] = std::clamp(
+                                static_cast<int>(district_text[d] - '0'), 0,
+                                kMaxDistrictLevel);
+                        }
+                    }
                 }
                 state.colonies.push_back(colony);
             }
